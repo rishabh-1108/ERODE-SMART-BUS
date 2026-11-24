@@ -1,23 +1,25 @@
-
 import { useState } from 'react'
 import {
   BusFront, Mail, Lock, User, Phone,
   Eye, EyeOff, ArrowLeft
 } from 'lucide-react'
+import API from './axios'
 
-export default function Auth({ onClose }) {
+export default function Auth({ onClose, onLogin }) {
   const [mode, setMode] = useState('login')
   const [showPassword, setShowPassword] = useState(false)
+  const [username, setUsername] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const isSignup = mode === 'signup'
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setMessage('')
 
@@ -31,18 +33,54 @@ export default function Auth({ onClose }) {
       return
     }
 
-    setMessage(
-      isSignup
-        ? 'Account details validated! Backend registration will be connected next.'
-        : 'Login form validated! Backend authentication will be connected next.'
-    )
+    setLoading(true)
+
+    try {
+      if (isSignup) {
+        await API.post('auth/register/', {
+          username: username.trim(),
+          full_name: name.trim(),
+          phone,
+          email: email.trim(),
+          password
+        })
+
+        setMessage('Account created successfully! Please login.')
+        setMode('login')
+        setPassword('')
+        setConfirmPassword('')
+      } else {
+        const response = await API.post('auth/login/', {
+          username: username.trim(),
+          password
+        })
+
+        localStorage.setItem('access_token', response.data.access)
+        localStorage.setItem('refresh_token', response.data.refresh)
+        localStorage.setItem('user', JSON.stringify(response.data.user))
+
+        onLogin(response.data.user)
+      }
+    } catch (error) {
+      const data = error.response?.data
+      const errorMessage =
+        data?.error ||
+        data?.detail ||
+        (typeof data === 'object'
+          ? Object.values(data).flat().join(' ')
+          : null) ||
+        'Something went wrong. Please try again.'
+
+      setMessage(errorMessage)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-5">
       <div className="w-full max-w-5xl bg-white rounded-3xl shadow-xl overflow-hidden grid md:grid-cols-2">
 
-        {/* Left Side */}
         <div className="hidden md:flex flex-col justify-between bg-gradient-to-br from-blue-950 via-blue-800 to-blue-600 text-white p-10">
           <div>
             <div className="flex items-center gap-3">
@@ -71,9 +109,7 @@ export default function Auth({ onClose }) {
           </p>
         </div>
 
-        {/* Right Side */}
         <div className="p-7 sm:p-10 md:p-12">
-
           <button
             onClick={onClose}
             className="flex items-center gap-2 text-sm text-slate-500 hover:text-blue-700 mb-10"
@@ -99,42 +135,54 @@ export default function Auth({ onClose }) {
               : 'Login to manage your bus journeys.'}
           </p>
 
-          {/* Login / Signup Tabs */}
           <div className="grid grid-cols-2 bg-slate-100 rounded-xl p-1 mt-8">
             <button
+              type="button"
               onClick={() => {
                 setMode('login')
                 setMessage('')
               }}
               className={`py-3 rounded-lg font-semibold text-sm ${
-                !isSignup
-                  ? 'bg-white shadow text-blue-700'
-                  : 'text-slate-500'
+                !isSignup ? 'bg-white shadow text-blue-700' : 'text-slate-500'
               }`}
             >
               Login
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 setMode('signup')
                 setMessage('')
               }}
               className={`py-3 rounded-lg font-semibold text-sm ${
-                isSignup
-                  ? 'bg-white shadow text-blue-700'
-                  : 'text-slate-500'
+                isSignup ? 'bg-white shadow text-blue-700' : 'text-slate-500'
               }`}
             >
               Sign Up
             </button>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5 mt-8">
 
             {isSignup && (
               <>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-600">
+                    Username
+                  </span>
+                  <div className="flex items-center border border-slate-200 rounded-xl mt-2 px-3">
+                    <User size={19} className="text-slate-400" />
+                    <input
+                      required
+                      value={username}
+                      onChange={e => setUsername(e.target.value)}
+                      placeholder="Choose a username"
+                      className="w-full p-3 outline-none"
+                    />
+                  </div>
+                </label>
+
                 <label className="block">
                   <span className="text-sm font-semibold text-slate-600">
                     Full Name
@@ -144,7 +192,7 @@ export default function Auth({ onClose }) {
                     <input
                       required
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      onChange={e => setName(e.target.value)}
                       placeholder="Enter your full name"
                       className="w-full p-3 outline-none"
                     />
@@ -162,7 +210,7 @@ export default function Auth({ onClose }) {
                       type="tel"
                       maxLength={10}
                       value={phone}
-                      onChange={(e) =>
+                      onChange={e =>
                         setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))
                       }
                       placeholder="10-digit mobile number"
@@ -175,16 +223,20 @@ export default function Auth({ onClose }) {
 
             <label className="block">
               <span className="text-sm font-semibold text-slate-600">
-                Email Address
+                {isSignup ? 'Email Address' : 'Username'}
               </span>
               <div className="flex items-center border border-slate-200 rounded-xl mt-2 px-3">
                 <Mail size={19} className="text-slate-400" />
                 <input
                   required
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  type={isSignup ? 'email' : 'text'}
+                  value={isSignup ? email : username}
+                  onChange={e =>
+                    isSignup
+                      ? setEmail(e.target.value)
+                      : setUsername(e.target.value)
+                  }
+                  placeholder={isSignup ? 'you@example.com' : 'Enter your username'}
                   className="w-full p-3 outline-none"
                 />
               </div>
@@ -201,7 +253,7 @@ export default function Auth({ onClose }) {
                   minLength={8}
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={e => setPassword(e.target.value)}
                   placeholder="Minimum 8 characters"
                   className="w-full p-3 outline-none"
                 />
@@ -227,7 +279,7 @@ export default function Auth({ onClose }) {
                     minLength={8}
                     type="password"
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onChange={e => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter password"
                     className="w-full p-3 outline-none"
                   />
@@ -243,18 +295,21 @@ export default function Auth({ onClose }) {
 
             <button
               type="submit"
-              className="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-4 rounded-xl transition"
+              disabled={loading}
+              className="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-blue-300 text-white font-bold py-4 rounded-xl transition"
             >
-              {isSignup ? 'Create Account' : 'Login to Your Account'}
+              {loading
+                ? 'Please wait...'
+                : isSignup
+                  ? 'Create Account'
+                  : 'Login to Your Account'}
             </button>
           </form>
 
           <p className="text-center text-sm text-slate-500 mt-7">
-            {isSignup
-              ? 'Already have an account?'
-              : "Don't have an account?"}
-
+            {isSignup ? 'Already have an account?' : "Don't have an account?"}
             <button
+              type="button"
               onClick={() => {
                 setMode(isSignup ? 'login' : 'signup')
                 setMessage('')
