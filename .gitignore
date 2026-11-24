@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+venv/
+.env
+.env.*
+
+# Django
+db.sqlite3
+staticfiles/
+media/
+
+# React
+node_modules/
+frontend/dist/
+
+# Editor
+.vscode/
